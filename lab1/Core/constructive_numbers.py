@@ -27,6 +27,11 @@ class ConstructiveNumber(ABC):
         """Метод, высчитывающий интервалы с точностью `precision_digits`"""
         pass
 
+    @abstractmethod
+    def __str__(self) -> str:
+        """Красивое строковое представление узла дерева"""
+        pass
+
     def _compare(
         self,
         other: 'ConstructiveNumber',
@@ -126,7 +131,6 @@ class ConstructiveNumber(ABC):
         power: 'ConstructiveNumber | int | float'
     ) -> 'CNPow':
         return CNPow(self, self._ensure_cn(power))
-    
 
 class CNConstant(ConstructiveNumber):
     """Класс константы"""
@@ -141,6 +145,9 @@ class CNConstant(ConstructiveNumber):
     
     def _do_evaluate(self, precision_digits: int) -> Interval:
         return Interval(self.val, self.val)
+
+    def __str__(self) -> str:
+        return str(self.val)
 
 
 class CNAdd(ConstructiveNumber):
@@ -161,6 +168,9 @@ class CNAdd(ConstructiveNumber):
         i1 = self.left.evaluate(extra_prec)
         i2 = self.right.evaluate(extra_prec)
         return Interval(i1.low + i2.low, i1.high + i2.high)
+    
+    def __str__(self) -> str:
+        return f"({self.left} + {self.right})"
 
 
 class CNSub(ConstructiveNumber):
@@ -181,6 +191,9 @@ class CNSub(ConstructiveNumber):
         i1 = self.left.evaluate(extra_prec)
         i2 = self.right.evaluate(extra_prec)
         return Interval(i1.low - i2.high, i1.high - i2.low)
+    
+    def __str__(self) -> str:
+        return f"({self.left} - {self.right})"
 
 
 class CNMul(ConstructiveNumber):
@@ -208,6 +221,9 @@ class CNMul(ConstructiveNumber):
             i1.high * i2.high
         ]
         return Interval(min(coords), max(coords))
+    
+    def __str__(self) -> str:
+        return f"({self.left} * {self.right})"
 
 
 class CNDiv(ConstructiveNumber):
@@ -238,6 +254,9 @@ class CNDiv(ConstructiveNumber):
             i1.high / i2.high
         ]
         return Interval(min(coords), max(coords))
+    
+    def __str__(self) -> str:
+        return f"({self.left} / {self.right})"
 
 
 class CNPow(ConstructiveNumber):
@@ -280,6 +299,9 @@ class CNPow(ConstructiveNumber):
             ln_base.high * power_interval.high
         ]
         return Interval(min(coords).exp(), max(coords).exp())
+    
+    def __str__(self) -> str:
+        return f"({self.base} ** {self.power})"
 
 
 class CNLog(ConstructiveNumber):
@@ -298,6 +320,9 @@ class CNLog(ConstructiveNumber):
             raise ValueError('Логарифм от неположительного числа')
         
         return Interval(i.low.ln(), i.high.ln())
+    
+    def __str__(self) -> str:
+        return f"ln({self.arg})"
 
 
 class CNExp(ConstructiveNumber):
@@ -313,6 +338,9 @@ class CNExp(ConstructiveNumber):
         i = self.arg.evaluate(extra_prec)
         
         return Interval(i.low.exp(), i.high.exp())
+    
+    def __str__(self) -> str:
+        return f"exp({self.arg})"
     
 
 def cn_ln(x: ConstructiveNumber) -> ConstructiveNumber:
