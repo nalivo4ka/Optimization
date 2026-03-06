@@ -80,5 +80,21 @@ class TestConsctuctiveNumbers(unittest.TestCase):
         with self.assertRaises(ValueError):
             CNLog(CNConstant(-5)).evaluate(10)
 
+    def test_tree_string_representation(self):
+        a = CNConstant(10)
+        b = CNConstant(5)
+        c = CNConstant(2)
+        d = CNConstant(3)
+        e = CNConstant(1)
+        
+        tree = ((a + b) * (c ** d)) - CNExp(e)
+        
+        expected_str = "(((10 + 5) * (2 ** 3)) - exp(1))"
+        self.assertEqual(str(tree), expected_str)
+
+        tree2 = CNLog(a) / b
+        expected_str2 = "(ln(10) / 5)"
+        self.assertEqual(str(tree2), expected_str2)
+
 if __name__ == '__main__':
     unittest.main()
