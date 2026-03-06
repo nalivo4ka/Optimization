@@ -16,5 +16,10 @@ class Interval:
         """Ширина интервала"""
         return self.high - self.low
     
+    @property
+    def middle(self) -> decimal.Decimal:
+        """Значение по центру интервала"""
+        return (self.low + self.high) / 2
+    
     def __repr__(self) -> str:
         return f"[{self.low}, {self.high}]"

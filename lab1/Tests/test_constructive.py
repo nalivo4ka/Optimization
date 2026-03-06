@@ -23,7 +23,7 @@ class TestConsctuctiveNumbers(unittest.TestCase):
         self.assertEqual(interval.high, decimal.Decimal('5.5'))
 
         # Отработка кэша
-        self.assertEqual(c._cached_prec, 10)
+        self.assertGreaterEqual(c._cached_prec, 10)
         self.assertIsNotNone(c._cached_interval)
 
     def test_tree_building_and_math(self):

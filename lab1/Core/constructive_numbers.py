@@ -12,7 +12,13 @@ class ConstructiveNumber(ABC):
         self._cached_interval: Interval | None = None
 
     def evaluate(self, precision_digits: int) -> Interval:
-        """Метод, возвращающий интервал с точностью `precision_digits`"""
+        """Основной НЕрекурсивный метод"""
+        working_prec = precision_digits + 10
+        decimal.getcontext().prec = working_prec
+        return self._caching_evaluate(working_prec)
+
+    def _caching_evaluate(self, precision_digits: int) -> Interval:
+        """Рекурсивные метод, возвращающий интервал с точностью `precision_digits`"""
         if self._cached_prec >= precision_digits and self._cached_interval:
             return self._cached_interval
         
@@ -132,6 +138,7 @@ class ConstructiveNumber(ABC):
     ) -> 'CNPow':
         return CNPow(self, self._ensure_cn(power))
 
+
 class CNConstant(ConstructiveNumber):
     """Класс константы"""
 
@@ -163,10 +170,8 @@ class CNAdd(ConstructiveNumber):
         self.right = right
 
     def _do_evaluate(self, precision_digits: int) -> Interval:
-        extra_prec = precision_digits + 5
-        decimal.getcontext().prec = extra_prec
-        i1 = self.left.evaluate(extra_prec)
-        i2 = self.right.evaluate(extra_prec)
+        i1 = self.left._caching_evaluate(precision_digits)
+        i2 = self.right._caching_evaluate(precision_digits)
         return Interval(i1.low + i2.low, i1.high + i2.high)
     
     def __str__(self) -> str:
@@ -186,10 +191,8 @@ class CNSub(ConstructiveNumber):
         self.right = right
 
     def _do_evaluate(self, precision_digits: int) -> Interval:
-        extra_prec = precision_digits + 5
-        decimal.getcontext().prec = extra_prec
-        i1 = self.left.evaluate(extra_prec)
-        i2 = self.right.evaluate(extra_prec)
+        i1 = self.left._caching_evaluate(precision_digits)
+        i2 = self.right._caching_evaluate(precision_digits)
         return Interval(i1.low - i2.high, i1.high - i2.low)
     
     def __str__(self) -> str:
@@ -209,10 +212,8 @@ class CNMul(ConstructiveNumber):
         self.right = right
 
     def _do_evaluate(self, precision_digits: int) -> Interval:
-        extra_prec = precision_digits + 5
-        decimal.getcontext().prec = extra_prec
-        i1 = self.left.evaluate(extra_prec)
-        i2 = self.right.evaluate(extra_prec)
+        i1 = self.left._caching_evaluate(precision_digits)
+        i2 = self.right._caching_evaluate(precision_digits)
 
         coords = [
             i1.low * i2.low,
@@ -239,10 +240,8 @@ class CNDiv(ConstructiveNumber):
         self.right = right
 
     def _do_evaluate(self, precision_digits: int) -> Interval:
-        extra_prec = precision_digits + 5
-        decimal.getcontext().prec = extra_prec
-        i1 = self.left.evaluate(extra_prec)
-        i2 = self.right.evaluate(extra_prec)
+        i1 = self.left._caching_evaluate(precision_digits)
+        i2 = self.right._caching_evaluate(precision_digits)
 
         if i2.low <= 0 <= i2.high:
             raise ValueError('Деление на интервал, содержащий ноль')
@@ -272,12 +271,9 @@ class CNPow(ConstructiveNumber):
         self.power = power
 
     def _do_evaluate(self, precision_digits: int) -> Interval:
-        extra_prec = precision_digits + 5
-        decimal.getcontext().prec = extra_prec
-        
         if isinstance(self.power, CNConstant) and self.power.val == self.power.val.to_integral_value():
             int_power = int(self.power.val)
-            i = self.base.evaluate(extra_prec)
+            i = self.base._caching_evaluate(precision_digits)
 
             if int_power % 2 == 0 and i.low < 0 < i.high:
                 low_bound = 0
@@ -289,8 +285,8 @@ class CNPow(ConstructiveNumber):
 
             return Interval(low_bound, high_bound)
         
-        ln_base = CNLog(self.base).evaluate(precision_digits + 10)
-        power_interval = self.power.evaluate(precision_digits + 10)
+        ln_base = CNLog(self.base)._caching_evaluate(precision_digits)
+        power_interval = self.power._caching_evaluate(precision_digits)
 
         coords = [
             ln_base.low * power_interval.low,
@@ -312,9 +308,7 @@ class CNLog(ConstructiveNumber):
         self.arg = arg
 
     def _do_evaluate(self, precision_digits: int) -> Interval:
-        extra_prec = precision_digits + 5
-        decimal.getcontext().prec = extra_prec
-        i = self.arg.evaluate(extra_prec)
+        i = self.arg._caching_evaluate(precision_digits)
 
         if i.low <= 0:
             raise ValueError('Логарифм от неположительного числа')
@@ -333,10 +327,7 @@ class CNExp(ConstructiveNumber):
         self.arg = arg
 
     def _do_evaluate(self, precision_digits: int) -> Interval:
-        extra_prec = precision_digits + 5
-        decimal.getcontext().prec = extra_prec
-        i = self.arg.evaluate(extra_prec)
-        
+        i = self.arg._caching_evaluate(precision_digits)
         return Interval(i.low.exp(), i.high.exp())
     
     def __str__(self) -> str:
