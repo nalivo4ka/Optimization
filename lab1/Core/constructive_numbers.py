@@ -27,6 +27,22 @@ class ConstructiveNumber(ABC):
         self._cached_prec = precision_digits
         self._cached_interval = result
         return result
+    
+    def _is_const_val(
+        self,
+        val: str | float | int
+    ) -> bool:
+        return isinstance(self, CNConstant) and self.val == decimal.Decimal(str(val))
+    
+    @abstractmethod
+    def derivative(self, var: 'CNVariable') -> 'ConstructiveNumber':
+        """Возвращает новое дерево, которое является производной по переменной var"""
+        pass
+
+    @abstractmethod
+    def simplify(self) -> 'ConstructiveNumber':
+        """Возвращает новое, упрощенное дерево"""
+        pass
 
     @abstractmethod
     def _do_evaluate(self, precision_digits: int) -> Interval:
@@ -149,12 +165,56 @@ class CNConstant(ConstructiveNumber):
         super().__init__()
         self.val = decimal.Decimal(str(val))
 
+    def derivative(self, var: 'CNVariable') -> ConstructiveNumber:
+        return  CNConstant(0)
+    
+    def simplify(self) -> ConstructiveNumber:
+        return self
     
     def _do_evaluate(self, precision_digits: int) -> Interval:
         return Interval(self.val, self.val)
 
     def __str__(self) -> str:
         return str(self.val)
+
+
+class CNVariable(ConstructiveNumber):
+    """Класс переменной (для функций)"""
+    
+    def __init__(
+        self,
+        name: str,
+        initial_val: str | float | int | None = None
+    ) -> None:
+        super().__init__()
+        self.name = name
+
+        if initial_val is None:
+            initial_val = 0
+
+        self.val = decimal.Decimal(initial_val)
+
+    def set_val(
+        self,
+        new_val: str | float | int
+    ) -> None:
+        self.val = decimal.Decimal(new_val)
+        self._cached_prec = -1
+        self._cached_interval = None
+
+    def derivative(self, var: 'CNVariable') -> ConstructiveNumber:
+        if self is var:
+            return CNConstant(1)
+        return CNConstant(0)
+    
+    def simplify(self) -> ConstructiveNumber:
+        return self
+
+    def _do_evaluate(self, precision_digits: int) -> Interval:
+        return Interval(self.val, self.val)
+    
+    def __str__(self) -> str:
+        return self.name
 
 
 class CNAdd(ConstructiveNumber):
@@ -168,6 +228,18 @@ class CNAdd(ConstructiveNumber):
         super().__init__()
         self.left = left
         self.right = right
+
+    def derivative(self, var: CNVariable) -> ConstructiveNumber:
+        return self.left.derivative(var) + self.right.derivative(var)
+    
+    def simplify(self) -> ConstructiveNumber:
+        l = self.left.simplify()
+        r = self.right.simplify()
+
+        if l._is_const_val(0): return r
+        if r._is_const_val(0): return l
+
+        return l + r
 
     def _do_evaluate(self, precision_digits: int) -> Interval:
         i1 = self.left._caching_evaluate(precision_digits)
@@ -190,6 +262,21 @@ class CNSub(ConstructiveNumber):
         self.left = left
         self.right = right
 
+    def derivative(self, var: CNVariable) -> ConstructiveNumber:
+        return self.left.derivative(var) - self.right.derivative(var)
+    
+    def simplify(self) -> ConstructiveNumber:
+        l = self.left.simplify()
+        r = self.right.simplify()
+
+        if r._is_const_val(0): return l
+        if l._is_const_val(0): return CNConstant(0) - r
+
+        if isinstance(l, CNVariable) and isinstance(r, CNVariable) and l.name == r.name:
+            return CNConstant(0)
+        
+        return l - r
+
     def _do_evaluate(self, precision_digits: int) -> Interval:
         i1 = self.left._caching_evaluate(precision_digits)
         i2 = self.right._caching_evaluate(precision_digits)
@@ -210,6 +297,20 @@ class CNMul(ConstructiveNumber):
         super().__init__()
         self.left = left
         self.right = right
+
+    def derivative(self, var: CNVariable) -> ConstructiveNumber:
+        return (self.left.derivative(var) * self.right) + (self.left * self.right.derivative(var))
+    
+    def simplify(self) -> ConstructiveNumber:
+        l = self.left.simplify()
+        r = self.right.simplify()
+
+        if l._is_const_val(0) or r._is_const_val(0): return CNConstant(0)
+
+        if l._is_const_val(1): return r
+        if r._is_const_val(1): return l
+
+        return l * r
 
     def _do_evaluate(self, precision_digits: int) -> Interval:
         i1 = self.left._caching_evaluate(precision_digits)
@@ -238,6 +339,26 @@ class CNDiv(ConstructiveNumber):
         super().__init__()
         self.left = left
         self.right = right
+
+    def derivative(self, var: CNVariable) -> ConstructiveNumber:
+        u = self.left
+        v = self.right
+        u_prime = u.derivative(var)
+        v_prime = v.derivative(var)
+
+        numerator = (u_prime * v) - (u * v_prime)
+        denominator = v ** CNConstant(2)
+
+        return numerator / denominator
+    
+    def simplify(self) -> ConstructiveNumber:
+        l = self.left.simplify()
+        r = self.right.simplify()
+
+        if l._is_const_val(0): return CNConstant(0)
+        if r._is_const_val(1): return l
+
+        return l / r
 
     def _do_evaluate(self, precision_digits: int) -> Interval:
         i1 = self.left._caching_evaluate(precision_digits)
@@ -269,6 +390,33 @@ class CNPow(ConstructiveNumber):
         super().__init__()
         self.base = base
         self.power = power
+
+    def derivative(self, var: CNVariable) -> ConstructiveNumber:
+        u = self.base
+        v = self.power
+        u_prime = u.derivative(var)
+        v_prime = v.derivative(var)
+
+        if isinstance(v, CNConstant):
+            return v * (u ** (v - CNConstant(1))) * u_prime
+        
+        if isinstance(u, CNConstant):
+            return self * cn_ln(u) * v_prime
+
+        part1 = v_prime * cn_ln(u)
+        part2 = v * u_prime / u
+        return self * (part1 + part2)
+    
+    def simplify(self) -> ConstructiveNumber:
+        b = self.base.simplify()
+        p = self.power.simplify()
+
+        if p._is_const_val(0): return CNConstant(1)
+        if p._is_const_val(1): return b
+        if b._is_const_val(0): return CNConstant(0)
+        if b._is_const_val(1): return CNConstant(1)
+
+        return b ** p
 
     def _do_evaluate(self, precision_digits: int) -> Interval:
         if isinstance(self.power, CNConstant) and self.power.val == self.power.val.to_integral_value():
@@ -307,6 +455,16 @@ class CNLog(ConstructiveNumber):
         super().__init__()
         self.arg = arg
 
+    def derivative(self, var: CNVariable) -> ConstructiveNumber:
+        return self.arg.derivative(var) / self.arg
+    
+    def simplify(self) -> ConstructiveNumber:
+        a = self.arg.simplify()
+
+        if a._is_const_val(1): return CNConstant(0)
+
+        return CNLog(a)
+
     def _do_evaluate(self, precision_digits: int) -> Interval:
         i = self.arg._caching_evaluate(precision_digits)
 
@@ -325,6 +483,16 @@ class CNExp(ConstructiveNumber):
     def __init__(self, arg: ConstructiveNumber) -> None:
         super().__init__()
         self.arg = arg
+
+    def derivative(self, var: CNVariable) -> ConstructiveNumber:
+        return self * self.arg.derivative(var)
+    
+    def simplify(self) -> ConstructiveNumber:
+        a = self.arg.simplify()
+
+        if a._is_const_val(0): return CNConstant(1)
+
+        return CNExp(a)
 
     def _do_evaluate(self, precision_digits: int) -> Interval:
         i = self.arg._caching_evaluate(precision_digits)
